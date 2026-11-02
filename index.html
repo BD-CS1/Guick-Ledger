@@ -1,0 +1,974 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智慧記帳與理財小幫手</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Alpine.js CDN -->
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+    <!-- Google Fonts Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Noto Sans TC', sans-serif;
+            background-color: #f8fafc;
+            color: #1e293b;
+        }
+        [x-cloak] { display: none !important; }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col pb-20 md:pb-0" x-data="bookkeepingApp()">
+
+    <!-- 頂部導覽列 (桌面版) / 標題列 (手機版) -->
+    <header class="bg-white border-b border-slate-200 sticky top-0 z-30 shadow-sm">
+        <div class="max-w-4xl mx-auto px-4 py-3 flex justify-between items-center">
+            <div class="flex items-center space-x-2">
+                <div class="bg-emerald-500 text-white p-2 rounded-xl shadow-md">
+                    <i class="fa-solid fa-wallet text-lg"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg text-slate-800 leading-tight">智慧記帳與理財小幫手</h1>
+                    <p class="text-xs text-slate-500" x-text="currentMonthText + ' 財務狀況'"></p>
+                </div>
+            </div>
+            <div class="hidden md:flex items-center space-x-1">
+                <button @click="tab = 'dashboard'" :class="tab === 'dashboard' ? 'bg-emerald-50 text-emerald-600 font-semibold' : 'text-slate-600 hover:bg-slate-100'" class="px-3 py-2 rounded-lg text-sm transition">首頁總覽</button>
+                <button @click="tab = 'records'; filterMonth = currentMonthStr;" :class="tab === 'records' ? 'bg-emerald-50 text-emerald-600 font-semibold' : 'text-slate-600 hover:bg-slate-100'" class="px-3 py-2 rounded-lg text-sm transition">帳本紀錄</button>
+                <button @click="tab = 'charts'; initCharts();" :class="tab === 'charts' ? 'bg-emerald-50 text-emerald-600 font-semibold' : 'text-slate-600 hover:bg-slate-100'" class="px-3 py-2 rounded-lg text-sm transition">圖表分析</button>
+                <button @click="tab = 'goals'" :class="tab === 'goals' ? 'bg-emerald-50 text-emerald-600 font-semibold' : 'text-slate-600 hover:bg-slate-100'" class="px-3 py-2 rounded-lg text-sm transition">理財目標</button>
+                <button @click="tab = 'settings'" :class="tab === 'settings' ? 'bg-emerald-50 text-emerald-600 font-semibold' : 'text-slate-600 hover:bg-slate-100'" class="px-3 py-2 rounded-lg text-sm transition">設定與備份</button>
+            </div>
+            <!-- 快速記帳按鈕 -->
+            <button @click="openAddModal()" class="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl shadow-lg shadow-emerald-600/20 text-sm font-medium flex items-center space-x-1.5 transition transform active:scale-95">
+                <i class="fa-solid fa-plus"></i>
+                <span>記一筆</span>
+            </button>
+        </div>
+    </header>
+
+    <!-- 主要內容區塊 -->
+    <main class="max-w-4xl mx-auto px-4 py-6 w-full flex-grow mb-12">
+
+        <!-- 1. 首頁總覽 (Dashboard) -->
+        <div x-show="tab === 'dashboard'" x-cloak class="space-y-6">
+            <!-- 財務概況卡片 -->
+            <div class="bg-gradient-to-br from-emerald-600 to-teal-700 rounded-3xl p-6 text-white shadow-xl relative overflow-hidden">
+                <div class="absolute -right-6 -bottom-6 w-36 h-36 bg-white/10 rounded-full blur-2xl"></div>
+                <div class="flex justify-between items-start mb-4">
+                    <div>
+                        <p class="text-emerald-100 text-sm font-medium" x-text="currentMonthText + ' 結餘'"></p>
+                        <h2 class="text-3xl font-bold mt-1" x-text="'$' + formatCurrency(monthlyBalance)"></h2>
+                    </div>
+                    <div class="bg-white/20 px-3 py-1 rounded-full text-xs font-medium backdrop-blur-md">
+                        本月收支
+                    </div>
+                </div>
+                <div class="grid grid-cols-2 gap-4 pt-4 border-t border-white/20">
+                    <div>
+                        <span class="text-xs text-emerald-100 flex items-center gap-1">
+                            <i class="fa-solid fa-arrow-down-long text-emerald-300"></i> 本月收入
+                        </span>
+                        <p class="text-xl font-semibold mt-0.5" x-text="'+$' + formatCurrency(monthlyIncome)"></p>
+                    </div>
+                    <div>
+                        <span class="text-xs text-emerald-100 flex items-center gap-1">
+                            <i class="fa-solid fa-arrow-up-long text-rose-300"></i> 本月支出
+                        </span>
+                        <p class="text-xl font-semibold mt-0.5" x-text="'-$' + formatCurrency(monthlyExpense)"></p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 理財目標小卡 -->
+            <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 relative overflow-hidden">
+                <div class="flex justify-between items-center mb-3">
+                    <div class="flex items-center space-x-2">
+                        <div class="w-8 h-8 rounded-lg bg-amber-50 text-amber-500 flex items-center justify-center font-bold">
+                            <i class="fa-solid fa-bullseye"></i>
+                        </div>
+                        <div>
+                            <h3 class="font-bold text-slate-800 text-sm" x-text="goal.title || '尚未設定理財目標'"></h3>
+                            <p class="text-xs text-slate-500" x-text="'目標金額: $' + formatCurrency(goal.target)"></p>
+                        </div>
+                    </div>
+                    <button @click="openGoalModal()" class="text-xs text-emerald-600 hover:text-emerald-700 font-medium bg-emerald-50 px-3 py-1.5 rounded-lg transition">編輯目標</button>
+                </div>
+                <!-- 進度條 -->
+                <div class="space-y-1.5">
+                    <div class="flex justify-between text-xs font-medium">
+                        <span class="text-slate-600" x-text="'已存: $' + formatCurrency(totalSavings)"></span>
+                        <span class="text-emerald-600 font-bold" x-text="goalProgressPercent + '%'"></span>
+                    </div>
+                    <div class="w-full bg-slate-100 h-3 rounded-full overflow-hidden">
+                        <div class="bg-gradient-to-r from-emerald-500 to-teal-400 h-full rounded-full transition-all duration-500" :style="'width: ' + goalProgressPercent + '%'"></div>
+                    </div>
+                </div>
+                <p class="text-xs text-slate-400 mt-2 italic text-center" x-text="goalEncouragement"></p>
+            </div>
+
+            <!-- 最近紀錄列表 -->
+            <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="font-bold text-slate-800 text-base">最近記帳紀錄</h3>
+                    <button @click="tab = 'records'" class="text-xs text-emerald-600 hover:underline font-medium">查看全部</button>
+                </div>
+                <template x-if="recentTransactions.length === 0">
+                    <div class="text-center py-8 text-slate-400">
+                        <i class="fa-regular fa-folder-open text-4xl mb-2"></i>
+                        <p class="text-sm">目前沒有任何記帳紀錄，點擊右上方「記一筆」開始吧！</p>
+                    </div>
+                </template>
+                <div class="space-y-3">
+                    <template x-for="item in recentTransactions" :key="item.id">
+                        <div class="flex items-center justify-between p-3 rounded-xl bg-slate-50 hover:bg-slate-100/80 transition">
+                            <div class="flex items-center space-x-3">
+                                <div :class="item.type === 'income' ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'" class="w-10 h-10 rounded-xl flex items-center justify-center font-bold text-sm">
+                                    <i :class="item.type === 'income' ? 'fa-solid fa-arrow-down' : 'fa-solid fa-arrow-up'"></i>
+                                </div>
+                                <div>
+                                    <h4 class="font-semibold text-slate-800 text-sm" x-text="item.item"></h4>
+                                    <div class="flex items-center space-x-2 text-xs text-slate-500 mt-0.5">
+                                        <span class="bg-slate-200/70 px-2 py-0.5 rounded text-slate-700" x-text="item.category"></span>
+                                        <span x-text="item.date"></span>
+                                        <span x-show="item.invoice" class="text-slate-400 font-mono" x-text="'發票:' + item.invoice"></span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="text-right">
+                                <span class="font-bold text-sm" :class="item.type === 'income' ? 'text-emerald-600' : 'text-slate-800'" x-text="(item.type === 'income' ? '+' : '-') + '$' + formatCurrency(item.amount)"></span>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+
+        <!-- 2. 帳本紀錄管理 (Records) -->
+        <div x-show="tab === 'records'" x-cloak class="space-y-6">
+            <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 space-y-4">
+                <div class="flex flex-col sm:flex-row justify-between gap-3">
+                    <h3 class="font-bold text-slate-800 text-base">歷史帳本清單</h3>
+                    <!-- 篩選列 -->
+                    <div class="flex flex-wrap gap-2">
+                        <input type="month" x-model="filterMonth" class="bg-slate-50 border border-slate-200 text-slate-700 text-xs rounded-xl px-3 py-2 outline-none focus:border-emerald-500">
+                        <select x-model="filterType" class="bg-slate-50 border border-slate-200 text-slate-700 text-xs rounded-xl px-3 py-2 outline-none focus:border-emerald-500">
+                            <option value="all">全部類型</option>
+                            <option value="income">僅收入</option>
+                            <option value="expense">僅支出</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- 紀錄表格/列表 -->
+                <template x-if="filteredTransactions.length === 0">
+                    <div class="text-center py-12 text-slate-400">
+                        <i class="fa-solid fa-receipt text-4xl mb-2"></i>
+                        <p class="text-sm">此月份或條件下沒有記帳紀錄。</p>
+                    </div>
+                </template>
+                <div class="divide-y divide-slate-100">
+                    <template x-for="item in filteredTransactions" :key="item.id">
+                        <div class="py-3 flex items-center justify-between hover:bg-slate-50/50 px-2 rounded-xl transition">
+                            <div class="flex items-center space-x-3">
+                                <div :class="item.type === 'income' ? 'bg-emerald-100 text-emerald-600' : 'bg-rose-100 text-rose-600'" class="w-9 h-9 rounded-xl flex items-center justify-center font-bold text-xs">
+                                    <i :class="item.type === 'income' ? 'fa-solid fa-arrow-down' : 'fa-solid fa-arrow-up'"></i>
+                                </div>
+                                <div>
+                                    <div class="flex items-center space-x-2">
+                                        <h4 class="font-semibold text-slate-800 text-sm" x-text="item.item"></h4>
+                                        <span class="text-xs px-2 py-0.5 rounded bg-slate-100 text-slate-600" x-text="item.category"></span>
+                                    </div>
+                                    <div class="flex items-center space-x-3 text-xs text-slate-400 mt-1">
+                                        <span x-text="item.date"></span>
+                                        <span x-show="item.invoice" class="font-mono text-slate-500" x-text="'發票號碼: ' + item.invoice"></span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="flex items-center space-x-4">
+                                <span class="font-bold text-sm" :class="item.type === 'income' ? 'text-emerald-600' : 'text-slate-800'" x-text="(item.type === 'income' ? '+' : '-') + '$' + formatCurrency(item.amount)"></span>
+                                <div class="flex items-center space-x-1">
+                                    <button @click="editTransaction(item)" class="text-slate-400 hover:text-emerald-600 p-1.5 transition" title="編輯">
+                                        <i class="fa-solid fa-pen-to-square text-xs"></i>
+                                    </button>
+                                    <button @click="deleteTransaction(item.id)" class="text-slate-400 hover:text-rose-600 p-1.5 transition" title="刪除">
+                                        <i class="fa-solid fa-trash-can text-xs"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </template>
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. 圖表分析 (Charts) -->
+        <div x-show="tab === 'charts'" x-cloak class="space-y-6">
+            <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 space-y-4">
+                <div class="flex flex-col sm:flex-row justify-between items-center gap-3">
+                    <h3 class="font-bold text-slate-800 text-base">每月收支分類統計</h3>
+                    <input type="month" x-model="chartMonth" @change="updateCharts()" class="bg-slate-50 border border-slate-200 text-slate-700 text-xs rounded-xl px-3 py-2 outline-none focus:border-emerald-500">
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6 pt-4">
+                    <!-- 支出圓餅圖 -->
+                    <div class="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex flex-col items-center">
+                        <h4 class="font-semibold text-slate-700 text-sm mb-3">各類別消費支出比例</h4>
+                        <div class="w-full max-w-[260px] h-[260px] relative">
+                            <canvas id="expenseChart"></canvas>
+                        </div>
+                    </div>
+                    <!-- 收入圓餅圖 -->
+                    <div class="bg-slate-50 p-4 rounded-2xl border border-slate-100 flex flex-col items-center">
+                        <h4 class="font-semibold text-slate-700 text-sm mb-3">各類別進帳收入比例</h4>
+                        <div class="w-full max-w-[260px] h-[260px] relative">
+                            <canvas id="incomeChart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 4. 理財目標 (Goals) -->
+        <div x-show="tab === 'goals'" x-cloak class="space-y-6">
+            <div class="bg-white rounded-2xl p-6 shadow-sm border border-slate-100 space-y-6">
+                <div class="flex justify-between items-center">
+                    <div>
+                        <h3 class="font-bold text-slate-800 text-lg">我的理財目標</h3>
+                        <p class="text-xs text-slate-500 mt-0.5">為自己設定一個儲蓄或消費控制目標，讓記帳更有動力！</p>
+                    </div>
+                    <button @click="openGoalModal()" class="bg-emerald-600 text-white px-4 py-2 rounded-xl text-xs font-medium hover:bg-emerald-700 transition">修改目標</button>
+                </div>
+
+                <div class="bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-100 rounded-2xl p-6 space-y-4">
+                    <div class="flex justify-between items-center">
+                        <span class="text-xs font-bold text-emerald-700 bg-emerald-100 px-3 py-1 rounded-full">目標名稱</span>
+                        <span class="text-xs text-slate-500" x-text="'目標金額: $' + formatCurrency(goal.target)"></span>
+                    </div>
+                    <h2 class="text-2xl font-bold text-slate-800" x-text="goal.title || '尚未設定目標'"></h2>
+
+                    <div class="space-y-2 pt-2">
+                        <div class="flex justify-between text-sm font-medium">
+                            <span class="text-slate-600" x-text="'目前累積淨儲蓄: $' + formatCurrency(totalSavings)"></span>
+                            <span class="text-emerald-600 font-bold" x-text="goalProgressPercent + '%'"></span>
+                        </div>
+                        <div class="w-full bg-slate-200/80 h-4 rounded-full overflow-hidden p-0.5">
+                            <div class="bg-emerald-500 h-full rounded-full transition-all duration-500" :style="'width: ' + goalProgressPercent + '%'"></div>
+                        </div>
+                    </div>
+                    <div class="bg-white/80 rounded-xl p-4 border border-emerald-100 text-xs text-slate-600 flex items-start space-x-3">
+                        <i class="fa-solid fa-lightbulb text-amber-500 text-base mt-0.5"></i>
+                        <div>
+                            <span class="font-bold text-slate-700">激勵小語：</span>
+                            <span x-text="goalEncouragement"></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 5. 設定與備份 (Settings) -->
+        <div x-show="tab === 'settings'" x-cloak class="space-y-6">
+            <!-- 分類管理 -->
+            <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 space-y-4">
+                <h3 class="font-bold text-slate-800 text-base">消費與進帳分類管理</h3>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                    <!-- 新增分類表單 -->
+                    <div class="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-3">
+                        <h4 class="font-semibold text-xs text-slate-600">新增自訂分類</h4>
+                        <div class="space-y-2">
+                            <select x-model="newCatType" class="w-full bg-white border border-slate-200 text-slate-700 text-xs rounded-xl px-3 py-2 outline-none focus:border-emerald-500">
+                                <option value="expense">支出分類</option>
+                                <option value="income">收入分類</option>
+                            </select>
+                            <input type="text" x-model="newCatName" placeholder="輸入分類名稱..." class="w-full bg-white border border-slate-200 text-slate-700 text-xs rounded-xl px-3 py-2 outline-none focus:border-emerald-500">
+                            <button @click="addCategory()" class="w-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium py-2 rounded-xl transition">新增分類</button>
+                        </div>
+                    </div>
+
+                    <!-- 分類列表檢視 -->
+                    <div class="bg-slate-50 p-4 rounded-xl border border-slate-100 space-y-3">
+                        <h4 class="font-semibold text-xs text-slate-600">現有分類清單</h4>
+                        <div class="space-y-2 max-h-48 overflow-y-auto pr-1">
+                            <div>
+                                <p class="text-[11px] text-slate-400 font-bold mb-1">支出分類</p>
+                                <div class="flex flex-wrap gap-1">
+                                    <template x-for="cat in categories.expense" :key="cat">
+                                        <span class="bg-white border border-slate-200 text-slate-700 text-xs px-2.5 py-1 rounded-lg flex items-center space-x-1">
+                                            <span x-text="cat"></span>
+                                            <button @click="deleteCategory('expense', cat)" class="text-slate-400 hover:text-rose-500 ml-1"><i class="fa-solid fa-xmark text-[10px]"></i></button>
+                                        </span>
+                                    </template>
+                                </div>
+                            </div>
+                            <div class="pt-2">
+                                <p class="text-[11px] text-slate-400 font-bold mb-1">收入分類</p>
+                                <div class="flex flex-wrap gap-1">
+                                    <template x-for="cat in categories.income" :key="cat">
+                                        <span class="bg-white border border-slate-200 text-slate-700 text-xs px-2.5 py-1 rounded-lg flex items-center space-x-1">
+                                            <span x-text="cat"></span>
+                                            <button @click="deleteCategory('income', cat)" class="text-slate-400 hover:text-rose-500 ml-1"><i class="fa-solid fa-xmark text-[10px]"></i></button>
+                                        </span>
+                                    </template>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 資料備份與還原 -->
+            <div class="bg-white rounded-2xl p-5 shadow-sm border border-slate-100 space-y-4">
+                <h3 class="font-bold text-slate-800 text-base">歷史紀錄備份與還原</h3>
+                <p class="text-xs text-slate-500">您的所有資料皆安全地儲存在此裝置的瀏覽器中。您隨時可以將資料匯出備份，或從檔案還原。</p>
+                <div class="flex flex-wrap gap-3 pt-2">
+                    <button @click="exportData()" class="bg-slate-800 hover:bg-slate-900 text-white px-4 py-2.5 rounded-xl text-xs font-medium flex items-center space-x-2 transition">
+                        <i class="fa-solid fa-download"></i>
+                        <span>匯出歷史紀錄 (JSON)</span>
+                    </button>
+                    <label class="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 px-4 py-2.5 rounded-xl text-xs font-medium flex items-center space-x-2 cursor-pointer transition">
+                        <i class="fa-solid fa-upload"></i>
+                        <span>匯入歷史紀錄</span>
+                        <input type="file" @change="importData($event)" accept=".json" class="hidden">
+                    </label>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <!-- 行動裝置底部導覽列 (Mobile Bottom Nav) -->
+    <nav class="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 px-4 py-2 flex justify-around items-center z-30 shadow-lg">
+        <button @click="tab = 'dashboard'" :class="tab === 'dashboard' ? 'text-emerald-600' : 'text-slate-400'" class="flex flex-col items-center space-y-1">
+            <i class="fa-solid fa-house text-base"></i>
+            <span class="text-[10px]">首頁</span>
+        </button>
+        <button @click="tab = 'records'; filterMonth = currentMonthStr;" :class="tab === 'records' ? 'text-emerald-600' : 'text-slate-400'" class="flex flex-col items-center space-y-1">
+            <i class="fa-solid fa-list-ul text-base"></i>
+            <span class="text-[10px]">紀錄</span>
+        </button>
+        <!-- 中央記帳快捷按鈕 -->
+        <button @click="openAddModal()" class="bg-emerald-600 text-white w-11 h-11 rounded-full flex items-center justify-center shadow-lg shadow-emerald-600/30 transform active:scale-95 -mt-3">
+            <i class="fa-solid fa-plus text-base"></i>
+        </button>
+        <button @click="tab = 'charts'; initCharts();" :class="tab === 'charts' ? 'text-emerald-600' : 'text-slate-400'" class="flex flex-col items-center space-y-1">
+            <i class="fa-solid fa-chart-pie text-base"></i>
+            <span class="text-[10px]">圖表</span>
+        </button>
+        <button @click="tab = 'goals'" :class="tab === 'goals' ? 'text-emerald-600' : 'text-slate-400'" class="flex flex-col items-center space-y-1">
+            <i class="fa-solid fa-bullseye text-base"></i>
+            <span class="text-[10px]">目標</span>
+        </button>
+        <button @click="tab = 'settings'" :class="tab === 'settings' ? 'text-emerald-600' : 'text-slate-400'" class="flex flex-col items-center space-y-1">
+            <i class="fa-solid fa-gear text-base"></i>
+            <span class="text-[10px]">設定</span>
+        </button>
+    </nav>
+
+    <!-- 記帳表單 Modal -->
+    <div x-show="showAddModal" x-cloak class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div @click.outside="closeAddModal()" class="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-5 transform transition-all">
+            <div class="flex justify-between items-center">
+                <h3 class="font-bold text-slate-800 text-lg" x-text="editId ? '編輯帳本紀錄' : '新增記帳紀錄'"></h3>
+                <button @click="closeAddModal()" class="text-slate-400 hover:text-slate-600 w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <div class="space-y-4">
+                <!-- 收入 / 支出 切換 -->
+                <div class="grid grid-cols-2 gap-2 bg-slate-100 p-1 rounded-xl">
+                    <button type="button" @click="form.type = 'expense'; form.category = categories.expense[0]" :class="form.type === 'expense' ? 'bg-white text-rose-600 font-semibold shadow-sm' : 'text-slate-500'" class="py-2 rounded-lg text-xs transition">支出</button>
+                    <button type="button" @click="form.type = 'income'; form.category = categories.income[0]" :class="form.type === 'income' ? 'bg-white text-emerald-600 font-semibold shadow-sm' : 'text-slate-500'" class="py-2 rounded-lg text-xs transition">收入</button>
+                </div>
+
+                <!-- 金額 -->
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">金額 ($)</label>
+                    <input type="number" x-model.number="form.amount" placeholder="請輸入金額" class="w-full bg-slate-50 border border-slate-200 text-slate-800 text-sm rounded-xl px-4 py-2.5 outline-none focus:border-emerald-500 font-bold">
+                </div>
+
+                <!-- 類別 -->
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">分類</label>
+                    <select x-model="form.category" class="w-full bg-slate-50 border border-slate-200 text-slate-800 text-sm rounded-xl px-4 py-2.5 outline-none focus:border-emerald-500">
+                        <template x-for="cat in (form.type === 'expense' ? categories.expense : categories.income)" :key="cat">
+                            <option :value="cat" x-text="cat"></option>
+                        </template>
+                    </select>
+                </div>
+
+                <!-- 消費項目 / 名稱 -->
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">項目名稱</label>
+                    <input type="text" x-model="form.item" placeholder="例如：午餐便當、薪資、捷運..." class="w-full bg-slate-50 border border-slate-200 text-slate-800 text-sm rounded-xl px-4 py-2.5 outline-none focus:border-emerald-500">
+                </div>
+
+                <!-- 發票號碼 -->
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">發票號碼 (選填)</label>
+                    <input type="text" x-model="form.invoice" placeholder="例如：AB-12345678" class="w-full bg-slate-50 border border-slate-200 text-slate-800 text-sm rounded-xl px-4 py-2.5 outline-none focus:border-emerald-500 font-mono">
+                </div>
+
+                <!-- 日期 -->
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">日期</label>
+                    <input type="date" x-model="form.date" class="w-full bg-slate-50 border border-slate-200 text-slate-800 text-sm rounded-xl px-4 py-2.5 outline-none focus:border-emerald-500">
+                </div>
+
+                <!-- 按鈕 -->
+                <div class="pt-2 flex space-x-3">
+                    <button @click="closeAddModal()" type="button" class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium py-3 rounded-xl text-xs transition">取消</button>
+                    <button @click="saveTransaction()" type="button" class="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-3 rounded-xl text-xs shadow-lg shadow-emerald-600/20 transition">儲存紀錄</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 理財目標設定 Modal -->
+    <div x-show="showGoalModal" x-cloak class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+        <div @click.outside="showGoalModal = false" class="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl space-y-5">
+            <div class="flex justify-between items-center">
+                <h3 class="font-bold text-slate-800 text-lg">設定理財目標</h3>
+                <button @click="showGoalModal = false" class="text-slate-400 hover:text-slate-600 w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">目標名稱 / 願望</label>
+                    <input type="text" x-model="goalForm.title" placeholder="例如：日本東京自由行基金" class="w-full bg-slate-50 border border-slate-200 text-slate-800 text-sm rounded-xl px-4 py-2.5 outline-none focus:border-emerald-500">
+                </div>
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1">目標儲蓄金額 ($)</label>
+                    <input type="number" x-model.number="goalForm.target" placeholder="例如：30000" class="w-full bg-slate-50 border border-slate-200 text-slate-800 text-sm rounded-xl px-4 py-2.5 outline-none focus:border-emerald-500 font-bold">
+                </div>
+                <div class="pt-2 flex space-x-3">
+                    <button @click="showGoalModal = false" type="button" class="flex-1 bg-slate-100 hover:bg-slate-200 text-slate-600 font-medium py-3 rounded-xl text-xs transition">取消</button>
+                    <button @click="saveGoal()" type="button" class="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white font-medium py-3 rounded-xl text-xs shadow-lg shadow-emerald-600/20 transition">儲存目標</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 自訂提示/確認 Modal (移至所有視窗最下方，使用 z-[100] 確保絕對浮在頂層) -->
+    <div x-show="alertModal.show" x-cloak class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] flex items-center justify-center p-4" @click.self="closeAlertModal()">
+        <div @click.stop class="bg-white rounded-3xl max-w-sm w-full p-6 shadow-2xl space-y-4 text-center">
+            <div class="w-12 h-12 rounded-full bg-amber-100 text-amber-600 mx-auto flex items-center justify-center text-xl">
+                <i class="fa-solid fa-circle-exclamation"></i>
+            </div>
+            <p class="text-sm font-medium text-slate-700" x-text="alertModal.message"></p>
+            <div class="flex justify-center space-x-3 pt-2">
+                <template x-if="alertModal.isConfirm">
+                    <button @click="handleAlertCancel()" type="button" class="px-5 py-2 bg-slate-100 text-slate-600 rounded-xl text-xs font-medium hover:bg-slate-200 transition">取消</button>
+                </template>
+                <button @click="handleAlertConfirm()" type="button" class="px-5 py-2 bg-emerald-600 text-white rounded-xl text-xs font-medium shadow-md shadow-emerald-600/20 hover:bg-emerald-700 transition">確定</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript 邏輯與圖表渲染 -->
+    <script>
+        // --- 本地資料庫處理 (IndexedDB 備援機制) ---
+        const DB_NAME = 'BookkeepingDB';
+        const DB_VERSION = 1;
+
+        function openDB() {
+            return new Promise((resolve, reject) => {
+                if (!window.indexedDB) {
+                    reject('Browser does not support IndexedDB');
+                    return;
+                }
+                const request = indexedDB.open(DB_NAME, DB_VERSION);
+                request.onerror = (e) => reject(e);
+                request.onsuccess = (e) => resolve(e.target.result);
+                request.onupgradeneeded = (e) => {
+                    const db = e.target.result;
+                    if (!db.objectStoreNames.contains('app_state')) {
+                        db.createObjectStore('app_state', { keyPath: 'key' });
+                    }
+                };
+            });
+        }
+
+        async function dbSet(key, value) {
+            try {
+                const db = await openDB();
+                return new Promise((resolve, reject) => {
+                    const tx = db.transaction('app_state', 'readwrite');
+                    const store = tx.objectStore('app_state');
+                    const req = store.put({ key: key, data: value });
+                    req.onsuccess = () => resolve(true);
+                    req.onerror = (e) => reject(e);
+                });
+            } catch (err) {
+                console.warn('IndexedDB set failed:', err);
+                return false;
+            }
+        }
+
+        async function dbGet(key) {
+            try {
+                const db = await openDB();
+                return new Promise((resolve) => {
+                    const tx = db.transaction('app_state', 'readonly');
+                    const store = tx.objectStore('app_state');
+                    const req = store.get(key);
+                    req.onsuccess = (e) => {
+                        resolve(e.target.result ? e.target.result.data : null);
+                    };
+                    req.onerror = () => resolve(null);
+                });
+            } catch (err) {
+                console.warn('IndexedDB get failed:', err);
+                return null;
+            }
+        }
+
+        function bookkeepingApp() {
+            return {
+                tab: 'dashboard',
+                transactions: [],
+                categories: {
+                    expense: ['餐飲美食', '交通通勤', '購物消費', '居家生活', '娛樂休閒', '醫療保健', '其他支出'],
+                    income: ['薪資收入', '獎金紅利', '投資理財', '兼職外快', '其他收入']
+                },
+                goal: { title: '存一桶金 / 旅遊基金', target: 20000 },
+                
+                // 檢查與修復安全儲存
+                async init() {
+                    let savedTx = await dbGet('book_transactions');
+                    let savedCat = await dbGet('book_categories');
+                    let savedGoal = await dbGet('book_goal');
+
+                    // 如果 IndexedDB 沒讀到，退回嘗試讀取 localStorage
+                    try {
+                        if (!savedTx && localStorage.getItem('book_transactions')) {
+                            savedTx = JSON.parse(localStorage.getItem('book_transactions'));
+                        }
+                        if (!savedCat && localStorage.getItem('book_categories')) {
+                            savedCat = JSON.parse(localStorage.getItem('book_categories'));
+                        }
+                        if (!savedGoal && localStorage.getItem('book_goal')) {
+                            savedGoal = JSON.parse(localStorage.getItem('book_goal'));
+                        }
+                    } catch (e) {
+                        console.warn("localStorage 不可用:", e);
+                    }
+
+                    // 賦予讀取到的真實資料（若無紀錄則預設為空陣列，絕不偽造紀錄）
+                    this.transactions = Array.isArray(savedTx) ? savedTx : [];
+                    if (savedCat) this.categories = savedCat;
+                    if (savedGoal) this.goal = savedGoal;
+                },
+                
+                // 篩選與表單狀態
+                filterMonth: new Date().toISOString().slice(0, 7),
+                chartMonth: new Date().toISOString().slice(0, 7),
+                filterType: 'all',
+                
+                // 新增分類狀態
+                newCatType: 'expense',
+                newCatName: '',
+
+                // 理財目標表單狀態
+                goalForm: {
+                    title: '',
+                    target: 0
+                },
+
+                // 自訂彈窗狀態 (避免使用系統 alert/confirm)
+                alertModal: {
+                    show: false,
+                    message: '',
+                    isConfirm: false,
+                    onConfirm: () => {},
+                    onCancel: () => {}
+                },
+
+                showAlert(msg) {
+                    this.alertModal = {
+                        show: true,
+                        message: msg,
+                        isConfirm: false,
+                        onConfirm: () => {},
+                        onCancel: () => {}
+                    };
+                },
+
+                showConfirm(msg, callback) {
+                    this.alertModal = {
+                        show: true,
+                        message: msg,
+                        isConfirm: true,
+                        onConfirm: callback,
+                        onCancel: () => {}
+                    };
+                },
+
+                closeAlertModal() {
+                    this.alertModal.show = false;
+                },
+
+                handleAlertConfirm() {
+                    const cb = this.alertModal.onConfirm;
+                    this.alertModal.show = false;
+                    if (cb && typeof cb === 'function') cb();
+                },
+
+                handleAlertCancel() {
+                    const cb = this.alertModal.onCancel;
+                    this.alertModal.show = false;
+                    if (cb && typeof cb === 'function') cb();
+                },
+
+                showAddModal: false,
+                showGoalModal: false,
+                editId: null,
+
+                form: {
+                    type: 'expense',
+                    amount: '',
+                    category: '餐飲美食',
+                    item: '',
+                    invoice: '',
+                    date: new Date().toISOString().slice(0, 10)
+                },
+
+                // 圖表實例
+                expenseChartInstance: null,
+                incomeChartInstance: null,
+
+                // 計算屬性
+                get currentMonthStr() {
+                    return new Date().toISOString().slice(0, 7);
+                },
+
+                get currentMonthText() {
+                    const date = new Date();
+                    return `${date.getFullYear()} 年 ${date.getMonth() + 1} 月`;
+                },
+
+                get currentMonthTransactions() {
+                    return this.transactions.filter(t => t.date && t.date.startsWith(this.currentMonthStr));
+                },
+
+                get monthlyIncome() {
+                    return this.currentMonthTransactions
+                        .filter(t => t.type === 'income')
+                        .reduce((sum, t) => sum + Number(t.amount || 0), 0);
+                },
+
+                get monthlyExpense() {
+                    return this.currentMonthTransactions
+                        .filter(t => t.type === 'expense')
+                        .reduce((sum, t) => sum + Number(t.amount || 0), 0);
+                },
+
+                get monthlyBalance() {
+                    return this.monthlyIncome - this.monthlyExpense;
+                },
+
+                get totalSavings() {
+                    return this.transactions.reduce((sum, t) => {
+                        return t.type === 'income' ? sum + Number(t.amount || 0) : sum - Number(t.amount || 0);
+                    }, 0);
+                },
+
+                get goalProgressPercent() {
+                    if (!this.goal.target || this.goal.target <= 0) return 0;
+                    const percent = Math.round((this.totalSavings / this.goal.target) * 100);
+                    return Math.min(Math.max(percent, 0), 100);
+                },
+
+                get goalEncouragement() {
+                    const percent = this.goalProgressPercent;
+                    if (percent >= 100) return '🎉 恭喜你！已經達成理財目標！繼續保持良好的記帳習慣吧！';
+                    if (percent >= 75) return '🔥 已經完成超過 75% 了，目標就在眼前，再接再勵！';
+                    if (percent >= 50) return '💪 進度過半！累積的努力正在發揮作用！';
+                    if (percent >= 25) return '🌱 跨出了一大步，積少成多，一步步邁向理想！';
+                    return '🚀 好的開始是成功的一半，每天堅持記帳與儲蓄吧！';
+                },
+
+                get recentTransactions() {
+                    return [...this.transactions]
+                        .sort((a, b) => new Date(b.date) - new Date(a.date))
+                        .slice(0, 5);
+                },
+
+                get filteredTransactions() {
+                    return this.transactions
+                        .filter(t => {
+                            const matchMonth = !this.filterMonth || (t.date && t.date.startsWith(this.filterMonth));
+                            const matchType = this.filterType === 'all' || t.type === this.filterType;
+                            return matchMonth && matchType;
+                        })
+                        .sort((a, b) => new Date(b.date) - new Date(a.date));
+                },
+
+                // 方法與操作
+                formatCurrency(num) {
+                    return (num || 0).toLocaleString();
+                },
+
+                async saveToStorage() {
+                    // 同時寫入 IndexedDB 與 localStorage，確保雙重保險
+                    await dbSet('book_transactions', JSON.parse(JSON.stringify(this.transactions)));
+                    await dbSet('book_categories', JSON.parse(JSON.stringify(this.categories)));
+                    await dbSet('book_goal', JSON.parse(JSON.stringify(this.goal)));
+
+                    try {
+                        localStorage.setItem('book_transactions', JSON.stringify(this.transactions));
+                        localStorage.setItem('book_categories', JSON.stringify(this.categories));
+                        localStorage.setItem('book_goal', JSON.stringify(this.goal));
+                    } catch (e) {
+                        console.warn("localStorage 寫入失敗，但已存在 IndexedDB 中", e);
+                    }
+                },
+
+                openAddModal() {
+                    this.editId = null;
+                    this.form = {
+                        type: 'expense',
+                        amount: '',
+                        category: this.categories.expense[0] || '其他支出',
+                        item: '',
+                        invoice: '',
+                        date: new Date().toISOString().slice(0, 10)
+                    };
+                    this.showAddModal = true;
+                },
+
+                closeAddModal() {
+                    this.showAddModal = false;
+                },
+
+                editTransaction(item) {
+                    this.editId = item.id;
+                    this.form = JSON.parse(JSON.stringify(item));
+                    this.showAddModal = true;
+                },
+
+                async saveTransaction() {
+                    if (!this.form.amount || Number(this.form.amount) <= 0) {
+                        this.showAlert('請輸入有效的金額！');
+                        return;
+                    }
+                    if (!this.form.item || !this.form.item.trim()) {
+                        this.showAlert('請輸入項目名稱！');
+                        return;
+                    }
+
+                    const newEntry = {
+                        id: this.editId ? this.editId : Date.now(),
+                        type: this.form.type,
+                        amount: Number(this.form.amount),
+                        category: this.form.category,
+                        item: this.form.item.trim(),
+                        invoice: (this.form.invoice || '').trim(),
+                        date: this.form.date || new Date().toISOString().slice(0, 10)
+                    };
+
+                    if (this.editId) {
+                        const idx = this.transactions.findIndex(t => t.id === this.editId);
+                        if (idx !== -1) {
+                            this.transactions[idx] = newEntry;
+                            // 重新產生陣列觸發 Alpine 監聽
+                            this.transactions = [...this.transactions];
+                        }
+                    } else {
+                        this.transactions = [newEntry, ...this.transactions];
+                    }
+
+                    await this.saveToStorage();
+                    this.closeAddModal();
+                    
+                    this.$nextTick(() => {
+                        if (this.tab === 'charts') this.updateCharts();
+                    });
+                },
+
+                async deleteTransaction(id) {
+                    this.showConfirm('確定要刪除這筆紀錄嗎？', async () => {
+                        this.transactions = this.transactions.filter(t => t.id !== id);
+                        await this.saveToStorage();
+                        this.$nextTick(() => {
+                            if (this.tab === 'charts') this.updateCharts();
+                        });
+                    });
+                },
+
+                openGoalModal() {
+                    this.goalForm = {
+                        title: this.goal.title,
+                        target: this.goal.target
+                    };
+                    this.showGoalModal = true;
+                },
+
+                async saveGoal() {
+                    if (!this.goalForm.title.trim()) {
+                        this.showAlert('請輸入目標名稱！');
+                        return;
+                    }
+                    if (!this.goalForm.target || Number(this.goalForm.target) <= 0) {
+                        this.showAlert('請輸入有效的目標金額！');
+                        return;
+                    }
+                    this.goal = { 
+                        title: this.goalForm.title.trim(), 
+                        target: Number(this.goalForm.target) 
+                    };
+                    await this.saveToStorage();
+                    this.showGoalModal = false;
+                },
+
+                async addCategory() {
+                    const name = this.newCatName.trim();
+                    if (!name) return;
+                    if (!this.categories[this.newCatType].includes(name)) {
+                        this.categories[this.newCatType].push(name);
+                        await this.saveToStorage();
+                        this.newCatName = '';
+                    } else {
+                        this.showAlert('分類已經存在！');
+                    }
+                },
+
+                async deleteCategory(type, name) {
+                    if (this.categories[type].length <= 1) {
+                        this.showAlert('至少需要保留一個分類！');
+                        return;
+                    }
+                    this.showConfirm(`確定要刪除「${name}」分類嗎？`, async () => {
+                        this.categories[type] = this.categories[type].filter(c => c !== name);
+                        await this.saveToStorage();
+                    });
+                },
+
+                exportData() {
+                    const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify({
+                        transactions: this.transactions,
+                        categories: this.categories,
+                        goal: this.goal
+                    }, null, 2));
+                    const downloadAnchor = document.createElement('a');
+                    downloadAnchor.setAttribute("href", dataStr);
+                    downloadAnchor.setAttribute("download", `bookkeeping_backup_${new Date().toISOString().slice(0,10)}.json`);
+                    document.body.appendChild(downloadAnchor);
+                    downloadAnchor.click();
+                    downloadAnchor.remove();
+                },
+
+                importData(event) {
+                    const file = event.target.files[0];
+                    if (!file) return;
+                    const reader = new FileReader();
+                    reader.onload = async (e) => {
+                        try {
+                            const data = JSON.parse(e.target.result);
+                            if (data.transactions && Array.isArray(data.transactions)) {
+                                this.transactions = data.transactions;
+                            }
+                            if (data.categories) {
+                                this.categories = data.categories;
+                            }
+                            if (data.goal) {
+                                this.goal = data.goal;
+                            }
+                            await this.saveToStorage();
+                            this.showAlert('資料匯入成功！');
+                        } catch (err) {
+                            this.showAlert('匯入失敗：請確認檔案格式是否正確 JSON 備份檔。');
+                        }
+                    };
+                    reader.readAsText(file);
+                },
+
+                initCharts() {
+                    this.$nextTick(() => {
+                        this.updateCharts();
+                    });
+                },
+
+                updateCharts() {
+                    const targetMonth = this.chartMonth;
+                    const monthTx = this.transactions.filter(t => t.date && t.date.startsWith(targetMonth));
+
+                    const expStats = {};
+                    const incStats = {};
+
+                    monthTx.forEach(t => {
+                        if (t.type === 'expense') {
+                            expStats[t.category] = (expStats[t.category] || 0) + Number(t.amount);
+                        } else if (t.type === 'income') {
+                            incStats[t.category] = (incStats[t.category] || 0) + Number(t.amount);
+                        }
+                    });
+
+                    const expCtx = document.getElementById('expenseChart');
+                    if (expCtx) {
+                        if (this.expenseChartInstance) this.expenseChartInstance.destroy();
+                        
+                        const labels = Object.keys(expStats);
+                        const data = Object.values(expStats);
+
+                        this.expenseChartInstance = new Chart(expCtx, {
+                            type: 'doughnut',
+                            data: {
+                                labels: labels.length > 0 ? labels : ['無紀錄'],
+                                datasets: [{
+                                    data: data.length > 0 ? data : [1],
+                                    backgroundColor: labels.length > 0 ? [
+                                        '#f43f5e', '#fb923c', '#f59e0b', '#10b981', '#06b6d4', '#6366f1', '#ec4899'
+                                    ] : ['#e2e8f0']
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                plugins: {
+                                    legend: { position: 'bottom' }
+                                }
+                            }
+                        });
+                    }
+
+                    const incCtx = document.getElementById('incomeChart');
+                    if (incCtx) {
+                        if (this.incomeChartInstance) this.incomeChartInstance.destroy();
+
+                        const labels = Object.keys(incStats);
+                        const data = Object.values(incStats);
+
+                        this.incomeChartInstance = new Chart(incCtx, {
+                            type: 'doughnut',
+                            data: {
+                                labels: labels.length > 0 ? labels : ['無紀錄'],
+                                datasets: [{
+                                    data: data.length > 0 ? data : [1],
+                                    backgroundColor: labels.length > 0 ? [
+                                        '#10b981', '#3b82f6', '#8b5cf6', '#f59e0b', '#06b6d4'
+                                    ] : ['#e2e8f0']
+                                }]
+                            },
+                            options: {
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                plugins: {
+                                    legend: { position: 'bottom' }
+                                }
+                            }
+                        });
+                    }
+                }
+            };
+        }
+    </script>
+</body>
+</html>
