@@ -4,6 +4,16 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>智慧記帳與理財小幫手</title>
+    
+    <!-- PWA 設定 -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#10b981">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="智慧記帳">
+    <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2953/2953361.png">
+
     <!-- Tailwind CSS CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- FontAwesome Icons -->
@@ -474,7 +484,16 @@
 
     <!-- JavaScript 邏輯與圖表渲染 -->
     <script>
-        // --- 本地資料庫處理 (IndexedDB 備援機制) ---
+        // 註冊 Service Worker 實現 PWA 快取與離線使用
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js')
+                    .then((reg) => console.log('Service Worker 註冊成功:', reg.scope))
+                    .catch((err) => console.log('Service Worker 註冊失敗:', err));
+            });
+        }
+
+        // --- 本地資料庫與容錯處理 ---
         const DB_NAME = 'BookkeepingDB';
         const DB_VERSION = 1;
 
@@ -484,15 +503,19 @@
                     reject('Browser does not support IndexedDB');
                     return;
                 }
-                const request = indexedDB.open(DB_NAME, DB_VERSION);
-                request.onerror = (e) => reject(e);
-                request.onsuccess = (e) => resolve(e.target.result);
-                request.onupgradeneeded = (e) => {
-                    const db = e.target.result;
-                    if (!db.objectStoreNames.contains('app_state')) {
-                        db.createObjectStore('app_state', { keyPath: 'key' });
-                    }
-                };
+                try {
+                    const request = indexedDB.open(DB_NAME, DB_VERSION);
+                    request.onerror = (e) => reject(e);
+                    request.onsuccess = (e) => resolve(e.target.result);
+                    request.onupgradeneeded = (e) => {
+                        const db = e.target.result;
+                        if (!db.objectStoreNames.contains('app_state')) {
+                            db.createObjectStore('app_state', { keyPath: 'key' });
+                        }
+                    };
+                } catch (e) {
+                    reject(e);
+                }
             });
         }
 
@@ -507,7 +530,7 @@
                     req.onerror = (e) => reject(e);
                 });
             } catch (err) {
-                console.warn('IndexedDB set failed:', err);
+                console.warn('IndexedDB set blocked/failed:', err);
                 return false;
             }
         }
@@ -525,7 +548,7 @@
                     req.onerror = () => resolve(null);
                 });
             } catch (err) {
-                console.warn('IndexedDB get failed:', err);
+                console.warn('IndexedDB get blocked/failed:', err);
                 return null;
             }
         }
@@ -539,14 +562,13 @@
                     income: ['薪資收入', '獎金紅利', '投資理財', '兼職外快', '其他收入']
                 },
                 goal: { title: '存一桶金 / 旅遊基金', target: 20000 },
+                storageWarning: false,
                 
-                // 檢查與修復安全儲存
                 async init() {
                     let savedTx = await dbGet('book_transactions');
                     let savedCat = await dbGet('book_categories');
                     let savedGoal = await dbGet('book_goal');
 
-                    // 如果 IndexedDB 沒讀到，退回嘗試讀取 localStorage
                     try {
                         if (!savedTx && localStorage.getItem('book_transactions')) {
                             savedTx = JSON.parse(localStorage.getItem('book_transactions'));
@@ -557,32 +579,30 @@
                         if (!savedGoal && localStorage.getItem('book_goal')) {
                             savedGoal = JSON.parse(localStorage.getItem('book_goal'));
                         }
+                        localStorage.setItem('__test_storage__', '1');
+                        localStorage.removeItem('__test_storage__');
                     } catch (e) {
-                        console.warn("localStorage 不可用:", e);
+                        console.warn("當前平台/瀏覽器環境禁止存取 localStorage，啟用記憶體模式", e);
+                        this.storageWarning = true;
                     }
 
-                    // 賦予讀取到的真實資料（若無紀錄則預設為空陣列，絕不偽造紀錄）
                     this.transactions = Array.isArray(savedTx) ? savedTx : [];
                     if (savedCat) this.categories = savedCat;
                     if (savedGoal) this.goal = savedGoal;
                 },
-                
-                // 篩選與表單狀態
+
                 filterMonth: new Date().toISOString().slice(0, 7),
                 chartMonth: new Date().toISOString().slice(0, 7),
                 filterType: 'all',
-                
-                // 新增分類狀態
+
                 newCatType: 'expense',
                 newCatName: '',
 
-                // 理財目標表單狀態
                 goalForm: {
                     title: '',
                     target: 0
                 },
 
-                // 自訂彈窗狀態 (避免使用系統 alert/confirm)
                 alertModal: {
                     show: false,
                     message: '',
@@ -640,11 +660,9 @@
                     date: new Date().toISOString().slice(0, 10)
                 },
 
-                // 圖表實例
                 expenseChartInstance: null,
                 incomeChartInstance: null,
 
-                // 計算屬性
                 get currentMonthStr() {
                     return new Date().toISOString().slice(0, 7);
                 },
@@ -711,23 +729,25 @@
                         .sort((a, b) => new Date(b.date) - new Date(a.date));
                 },
 
-                // 方法與操作
                 formatCurrency(num) {
                     return (num || 0).toLocaleString();
                 },
 
                 async saveToStorage() {
-                    // 同時寫入 IndexedDB 與 localStorage，確保雙重保險
-                    await dbSet('book_transactions', JSON.parse(JSON.stringify(this.transactions)));
-                    await dbSet('book_categories', JSON.parse(JSON.stringify(this.categories)));
-                    await dbSet('book_goal', JSON.parse(JSON.stringify(this.goal)));
+                    try {
+                        await dbSet('book_transactions', JSON.parse(JSON.stringify(this.transactions)));
+                        await dbSet('book_categories', JSON.parse(JSON.stringify(this.categories)));
+                        await dbSet('book_goal', JSON.parse(JSON.stringify(this.goal)));
+                    } catch (e) {
+                        console.warn("IndexedDB 寫入受限:", e);
+                    }
 
                     try {
                         localStorage.setItem('book_transactions', JSON.stringify(this.transactions));
                         localStorage.setItem('book_categories', JSON.stringify(this.categories));
                         localStorage.setItem('book_goal', JSON.stringify(this.goal));
                     } catch (e) {
-                        console.warn("localStorage 寫入失敗，但已存在 IndexedDB 中", e);
+                        console.warn("localStorage 寫入受限制", e);
                     }
                 },
 
@@ -778,7 +798,6 @@
                         const idx = this.transactions.findIndex(t => t.id === this.editId);
                         if (idx !== -1) {
                             this.transactions[idx] = newEntry;
-                            // 重新產生陣列觸發 Alpine 監聽
                             this.transactions = [...this.transactions];
                         }
                     } else {
