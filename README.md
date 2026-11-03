@@ -1,4 +1,5 @@
-# 智慧記帳與理財小幫手 (Smart Bookkeeping & Financial Tracker)
+# 智慧記帳與理財小幫手 v4.4
+(Smart Bookkeeping & Financial Tracker)
 
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 ![Build](https://img.shields.io/badge/build-passing-brightgreen)
