@@ -6,6 +6,7 @@
 ![Platform](https://img.shields.io/badge/platform-Mobile%20%7C%20Desktop-blue)
 
 https://bd-cs1.github.io/Guick-Ledger
+
 一個輕量、乾淨、直覺且完全保護隱私的 Web 記帳與理財工具。無需註冊帳號，所有資料皆安全儲存在您的個人裝置中，完全零伺服器成本。
 
 ---
